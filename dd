@@ -304,6 +304,10 @@ function Fader.Out(root: Instance, info: TweenInfo)
 		local targets = root:GetDescendants()
 		TIS(targets, root)
 		for _, target in next, targets do
+			-- Never fade the background image – its transparency is controlled separately
+			if target.Name == "BackgroundImage" then
+				continue
+			end
 			local props = Fader.Properties[target.ClassName]
 			if props then
 				local values = {}
@@ -323,6 +327,9 @@ function Fader.Out(root: Instance, info: TweenInfo)
 
 	for target, values in next, Fader.Cache[root] do
 		if target.Parent == nil and target ~= root then
+			continue
+		end
+		if target.Name == "BackgroundImage" then
 			continue
 		end
 		if instant then
@@ -355,6 +362,9 @@ function Fader.In(root: Instance, info: TweenInfo)
 
 	for target, values in next, cache do
 		if target.Parent == nil and target ~= root then
+			continue
+		end
+		if target.Name == "BackgroundImage" then
 			continue
 		end
 		if instant then
@@ -2145,12 +2155,16 @@ function Page:AddSection(side: string, title: string?)
 
 	local parent = (normalized == "right") and self.Right or self.Left
 
+	-- When the window has a background image, make sections translucent so the image shows through
+	local sectionTransparency = (self.Window and self.Window.HasBackgroundImage) and (self.Window.ChromeTransparency or 0.28) or 0
+
 	local section = Add("Frame", {
 		Parent = parent,
 		Size = UFS(1, 0),
 		Name = "Section",
 		AutomaticSize = AT.Y,
 		BorderSizePixel = 0,
+		BackgroundTransparency = sectionTransparency,
 	})
 	Bind(section, { BackgroundColor3 = "Background" })
 	Stroke(section, "Border", true)
@@ -2161,6 +2175,7 @@ function Page:AddSection(side: string, title: string?)
 		Name = "Header",
 		Size = UD2(1, 0, 0, 25),
 		BorderSizePixel = 0,
+		BackgroundTransparency = sectionTransparency,
 	})
 	Bind(header, { BackgroundColor3 = "Foreground" })
 	TopCorners(header)
@@ -2394,13 +2409,23 @@ function Window:SetFooterTextSize(size: number)
 	self.Footer2.TextSize = size
 end
 
-function Window:SetBackgroundImage(assetId: string | number?, transparency: number?)
+function Window:SetBackgroundImage(assetId: string | number?, transparency: number?, chromeTransparency: number?)
 	if self.BackgroundImage then
 		self.BackgroundImage:Destroy()
 		self.BackgroundImage = nil
 	end
 
-	if not assetId or assetId == "" or assetId == 0 then
+	local hasImage = assetId and assetId ~= "" and assetId ~= 0
+	self.HasBackgroundImage = hasImage and true or false
+	self.ChromeTransparency = hasImage and (chromeTransparency or 0.28) or 0
+
+	-- Update chrome panels
+	local ct = self.ChromeTransparency
+	if self.Header then self.Header.BackgroundTransparency = ct end
+	if self.Sidebar then self.Sidebar.BackgroundTransparency = ct end
+	if self.FooterBar then self.FooterBar.BackgroundTransparency = ct end
+
+	if not hasImage then
 		return
 	end
 
@@ -2505,6 +2530,10 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 		BorderSizePixel = 0,
 	})
 	Bind(canvas, { BackgroundColor3 = "Background" })
+	-- If a background image is used, make the solid fill more transparent so the image shows
+	if opts.BackgroundImage and opts.BackgroundImage ~= "" and opts.BackgroundImage ~= 0 then
+		canvas.BackgroundTransparency = opts.CanvasTransparency or 0.15
+	end
 	Stroke(canvas, "Border")
 	Corner(canvas, 0)
 
@@ -2523,9 +2552,14 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 	-- BACKGROUND IMAGE (covers entire UI)
 	-- Accepts: number (asset id) or string "rbxassetid://..." / raw id
 	-- Transparency: 0 = fully visible, 1 = invisible
+	-- When a background image is set, chrome panels become translucent
+	-- so the image is visible across the whole window.
 	-- ============================================================
 	local bgImage = nil
-	if opts.BackgroundImage and opts.BackgroundImage ~= "" and opts.BackgroundImage ~= 0 then
+	local hasBackgroundImage = opts.BackgroundImage and opts.BackgroundImage ~= "" and opts.BackgroundImage ~= 0
+	local chromeTransparency = hasBackgroundImage and (opts.ChromeTransparency or 0.28) or 0
+
+	if hasBackgroundImage then
 		local imageStr = typeof(opts.BackgroundImage) == "number"
 			and ("rbxassetid://" .. tostring(opts.BackgroundImage))
 			or tostring(opts.BackgroundImage)
@@ -2560,6 +2594,7 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 		Size = UD2(1, 0, 0, HEADER_HEIGHT),
 		BorderSizePixel = 0,
 		ZIndex = 1,
+		BackgroundTransparency = chromeTransparency,
 	})
 	Bind(header, { BackgroundColor3 = "Foreground" })
 	TopCorners(header)
@@ -2599,6 +2634,7 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 		Size = UD2(0, SIDEBAR_WIDTH, 1, -(HEADER_HEIGHT + FOOTER_HEIGHT)),
 		BorderSizePixel = 0,
 		ZIndex = 1,
+		BackgroundTransparency = chromeTransparency,
 	})
 	Bind(sidebar, { BackgroundColor3 = "Foreground" })
 
@@ -2655,6 +2691,7 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 		Size = UD2(1, 0, 0, FOOTER_HEIGHT),
 		BorderSizePixel = 0,
 		ZIndex = 1,
+		BackgroundTransparency = chromeTransparency,
 	})
 	Bind(footerBar, { BackgroundColor3 = "Foreground" })
 	BottomCorners(footerBar)
@@ -2731,6 +2768,8 @@ function Callisto:CreateWindow(options: { [string]: any }?)
 		FooterBar = footerBar,
 		Externals = externals,
 		BackgroundImage = bgImage,
+		HasBackgroundImage = hasBackgroundImage,
+		ChromeTransparency = chromeTransparency,
 		PageList = {},
 		CurrentPage = nil,
 		Visible = true,
